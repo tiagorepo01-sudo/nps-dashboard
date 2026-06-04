@@ -181,6 +181,10 @@ def load_data():
     broken = [c for c in df.columns if c.startswith("Asignaci")]
     if broken:
         df = df.rename(columns={broken[0]: "Asignación"})
+    # Limpiar espacios en columnas de texto
+    for col in ["Contactado", "Asignación", "Soporte", "Tipo_Red", "Zona"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
     df["Dia"] = df["Fecha"].dt.day
     return df
