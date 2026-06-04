@@ -171,10 +171,16 @@ section[data-testid="stSidebar"] { background-color: #0C0C18; border-right: 1px 
 
 
 # ── CARGA DE DATOS ────────────────────────────────────────────────────────────
+GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/10Gkvo98fO-aLa5FKLdDNR9Iv0OLm3r6POejykHdkGkM/export?format=csv&gid=1940977728"
+
 @st.cache_data(ttl=60)
 def load_data():
-    path = os.path.join(os.path.dirname(__file__), "Gestion_NPS_-_Mayo.xlsx")
-    df = pd.read_excel(path, sheet_name="BBDD-NPS")
+    df = pd.read_csv(GOOGLE_SHEET_URL)
+    # Normalizar columnas con encoding roto desde Google Sheets
+    df.columns = [c.strip() for c in df.columns]
+    broken = [c for c in df.columns if c.startswith("Asignaci")]
+    if broken:
+        df = df.rename(columns={broken[0]: "Asignación"})
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
     df["Dia"] = df["Fecha"].dt.day
     return df
