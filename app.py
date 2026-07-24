@@ -181,6 +181,9 @@ def load_data():
     broken = [c for c in df.columns if c.startswith("Asignaci")]
     if broken:
         df = df.rename(columns={broken[0]: "Asignación"})
+    broken_fecha = [c for c in df.columns if "echa" in c]
+    if broken_fecha:
+        df = df.rename(columns={broken_fecha[0]: "Fecha"})
     # Limpiar espacios en columnas de texto
     for col in ["Contactado", "Asignación", "Soporte", "Tipo_Red", "Zona"]:
         if col in df.columns:
