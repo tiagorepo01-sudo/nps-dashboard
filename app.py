@@ -211,6 +211,11 @@ def load_data():
     # Parsear fecha (formato DD/MM/YYYY desde Google Sheets)
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df["Dia"] = df["Fecha"].dt.day
+
+    # Asegurar que Semana_Actual sea numérico para poder comparar con enteros
+    if "Semana_Actual" in df.columns:
+        df["Semana_Actual"] = pd.to_numeric(df["Semana_Actual"], errors="coerce")
+
     return df
 
 df_raw = load_data()
