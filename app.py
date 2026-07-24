@@ -176,19 +176,40 @@ GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/10Gkvo98fO-aLa5FKLdDN
 @st.cache_data(ttl=60)
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_URL)
-    # Normalizar columnas con encoding roto desde Google Sheets
-    df.columns = [c.strip() for c in df.columns]
-    broken = [c for c in df.columns if c.startswith("Asignaci")]
-    if broken:
-        df = df.rename(columns={broken[0]: "Asignación"})
-    broken_fecha = [c for c in df.columns if "echa" in c]
-    if broken_fecha:
-        df = df.rename(columns={broken_fecha[0]: "Fecha"})
-    # Limpiar espacios en columnas de texto
+
+    # ── Renombrar ANTES de hacer strip para evitar colisiones ────────────────
+    # Col 0 sin cabecera = Fecha de gestión NPS
+    # Col 2 sin cabecera = Asignación (Atendida / Gestión)
+    # Col 1 con encoding roto ("Asignaci?n ") = Soporte/Agente NPS
+    rename_map = {}
+    for col in df.columns:
+        stripped = col.strip()
+        if stripped == "Unnamed: 0":
+            rename_map[col] = "Fecha"
+        elif stripped == "Unnamed: 2":
+            rename_map[col] = "Asignación"
+        elif stripped.startswith("Asignaci"):
+            rename_map[col] = "Soporte"
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    # Strip espacios en el resto de columnas
+    df.columns = [c.strip() if c not in ["Fecha", "Asignación", "Soporte"] else c
+                  for c in df.columns]
+
+    # Fallbacks si la hoja no tiene las columnas sin nombre
+    if "Fecha" not in df.columns and "Fecha_Actividad" in df.columns:
+        df = df.rename(columns={"Fecha_Actividad": "Fecha"})
+    if "Soporte" not in df.columns and "Tecnico" in df.columns:
+        df = df.rename(columns={"Tecnico": "Soporte"})
+
+    # Limpiar espacios en valores de texto
     for col in ["Contactado", "Asignación", "Soporte", "Tipo_Red", "Zona"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
+
+    # Parsear fecha (formato DD/MM/YYYY desde Google Sheets)
+    df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df["Dia"] = df["Fecha"].dt.day
     return df
 
