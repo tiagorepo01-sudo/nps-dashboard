@@ -166,6 +166,53 @@ section[data-testid="stSidebar"] { background-color: #0C0C18; border-right: 1px 
     justify-content: space-between;
     margin: 1rem -1rem 0;
 }
+
+/* ranking */
+.rank-panel {
+    background: #0D0D1A;
+    border: 1px solid #1C1C2C;
+    border-top: 3px solid #C8102E;
+    border-left: 3px solid #C8102E;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.rank-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; font-weight: 600;
+    color: white; letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 2px;
+}
+.rank-sub { font-size: 10px; color: #353545; margin-bottom: 12px; }
+.rank-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; margin-bottom: 4px;
+    border-radius: 4px;
+    background: #0A0A16;
+    border: 1px solid #1C1C2C;
+}
+.rank-pos {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px; font-weight: 700;
+    min-width: 28px; text-align: center;
+}
+.rank-name {
+    flex: 1; font-size: 12px; color: #D0D0E0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rank-bar-wrap {
+    width: 60px; height: 5px;
+    background: #1C1C2C; border-radius: 3px; overflow: hidden;
+}
+.rank-bar-fill { height: 100%; border-radius: 3px; }
+.rank-metric {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; font-weight: 700;
+    min-width: 42px; text-align: right;
+}
+.rank-metric-sm {
+    font-size: 10px; color: #4A4A6A;
+    min-width: 38px; text-align: right;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -353,6 +400,34 @@ GRID_COLOR  = "#1C1C2C"
 TEXT_COLOR  = "#8A8A9A"
 FONT_FAMILY = "Work Sans"
 
+def rank_color(pct):
+    if pct >= 60: return "#0F9B8E"
+    if pct >= 40: return "#BA7517"
+    return "#C83050"
+
+def rank_pos_html(pos):
+    if pos == 1: return '<span class="rank-pos" style="color:#FFD700">🥇</span>'
+    if pos == 2: return '<span class="rank-pos" style="color:#C0C0C0">🥈</span>'
+    if pos == 3: return '<span class="rank-pos" style="color:#CD7F32">🥉</span>'
+    return f'<span class="rank-pos" style="color:#353550">{pos}</span>'
+
+def soporte_metrics(df_in):
+    """Calcula métricas NPS por Soporte — compatible con pandas 3.x."""
+    grp = df_in.groupby("Soporte")
+    result = pd.DataFrame({"Total": grp.size()}).reset_index()
+    for estado, col_name in [
+        ("Contactado",    "Contactados"),
+        ("No Contactado", "No_Contactados"),
+        ("Intento 3",     "Intento3"),
+    ]:
+        counts = grp["Contactado"].apply(lambda x: (x == estado).sum()).reset_index()
+        counts.columns = ["Soporte", col_name]
+        result = result.merge(counts, on="Soporte", how="left")
+    result["Pct_Efect"]  = (result["Contactados"]    / result["Total"] * 100).round(1)
+    result["Pct_NoCont"] = (result["No_Contactados"] / result["Total"] * 100).round(1)
+    result["Pct_Int3"]   = (result["Intento3"]        / result["Total"] * 100).round(1)
+    return result.fillna(0)
+
 def chart_layout(fig, title="", height=260):
     fig.update_layout(
         title=dict(text=title, font=dict(size=12, color="white",
@@ -528,23 +603,17 @@ with col4:
     st.markdown('<div class="panel-sub">% contactado sobre asignados</div>', unsafe_allow_html=True)
 
     if not df.empty:
-        ag = df.groupby("Soporte").apply(
-            lambda x: pd.Series({
-                "Total":       len(x),
-                "Contactados": (x["Contactado"]=="Contactado").sum(),
-                "Pct":         round((x["Contactado"]=="Contactado").sum()/len(x)*100, 1)
-            })
-        ).reset_index().sort_values("Pct", ascending=True)
+        ag = soporte_metrics(df).sort_values("Pct_Efect", ascending=True)
 
         fig_ag = go.Figure()
         for _, row in ag.iterrows():
-            col_bar = "#0F9B8E" if row["Pct"] >= 50 else "#C83050"
+            col_bar = "#0F9B8E" if row["Pct_Efect"] >= 50 else "#C83050"
             fig_ag.add_trace(go.Bar(
-                x=[row["Pct"]],
+                x=[row["Pct_Efect"]],
                 y=[row["Soporte"]],
                 orientation="h",
                 marker_color=col_bar,
-                text=f"{row['Pct']}%  ({int(row['Contactados'])}/{int(row['Total'])})",
+                text=f"{row['Pct_Efect']}%  ({int(row['Contactados'])}/{int(row['Total'])})",
                 textposition="outside",
                 textfont=dict(size=10, color=TEXT_COLOR),
                 showlegend=False,
@@ -649,6 +718,85 @@ with col6:
         st.plotly_chart(fig_asig, use_container_width=True,
                         config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ── RANKING DE SOPORTES ───────────────────────────────────────────────────────
+st.markdown(
+    '<div class="panel-title" style="color:white;font-family:\'Barlow Condensed\',sans-serif;'
+    'font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;'
+    'margin:18px 0 10px;">🏆 RANKING · SOPORTES HAINTECH</div>',
+    unsafe_allow_html=True
+)
+
+if not df.empty and "Soporte" in df.columns:
+    rank_df = soporte_metrics(df)
+
+    sort_opts = {
+        "% Efectividad":    ("Pct_Efect",  False),
+        "Total asignados":  ("Total",       False),
+        "% No contactado":  ("Pct_NoCont", False),
+        "% Intento 3":      ("Pct_Int3",   False),
+    }
+    col_sort, col_min = st.columns([2, 1])
+    with col_sort:
+        sort_label = st.selectbox("Ordenar por", list(sort_opts.keys()), key="rank_sort_sop")
+    with col_min:
+        min_ord = st.slider("Mín. casos", 1, 20, 1, key="rank_min_sop")
+
+    sort_col, sort_asc = sort_opts[sort_label]
+    rank_df = rank_df[rank_df["Total"] >= min_ord].sort_values(sort_col, ascending=sort_asc).reset_index(drop=True)
+
+    # ── tarjetas visuales ──
+    rows_html = ""
+    for i, row in rank_df.iterrows():
+        pos    = i + 1
+        name   = row["Soporte"]
+        pct_e  = row["Pct_Efect"]
+        pct_nc = row["Pct_NoCont"]
+        pct_i3 = row["Pct_Int3"]
+        vol    = int(row["Total"])
+        color  = rank_color(pct_e)
+        bar_w  = min(int(pct_e), 100)
+
+        rows_html += f"""
+        <div class="rank-row">
+          {rank_pos_html(pos)}
+          <span class="rank-name" title="{name}">{name}</span>
+          <div class="rank-bar-wrap">
+            <div class="rank-bar-fill" style="width:{bar_w}%;background:{color}"></div>
+          </div>
+          <span class="rank-metric" style="color:{color}">{pct_e}%</span>
+          <span class="rank-metric-sm" style="color:#C83050">NC:{pct_nc:.0f}%</span>
+          <span class="rank-metric-sm" style="color:#BA7517">I3:{pct_i3:.0f}%</span>
+          <span class="rank-metric-sm">{vol} casos</span>
+        </div>"""
+
+    st.markdown(f'<div class="rank-panel">{rows_html}</div>', unsafe_allow_html=True)
+    st.caption("🟢 ≥60% efectividad   🟡 40–60%   🔴 <40%   |   NC: % No contactado   I3: % Intento 3")
+
+    with st.expander("Ver tabla completa", expanded=False):
+        tbl = rank_df[["Soporte", "Total", "Contactados", "No_Contactados", "Intento3",
+                        "Pct_Efect", "Pct_NoCont", "Pct_Int3"]].rename(columns={
+            "Soporte":        "Agente",
+            "Total":          "Total",
+            "Contactados":    "Contactados",
+            "No_Contactados": "No Cont.",
+            "Intento3":       "Intento 3",
+            "Pct_Efect":      "% Efect.",
+            "Pct_NoCont":     "% No Cont.",
+            "Pct_Int3":       "% Int. 3",
+        })
+        tbl.index = range(1, len(tbl) + 1)
+        st.dataframe(tbl, use_container_width=True, height=min(400, len(tbl) * 35 + 40))
+        st.download_button(
+            "⬇ Exportar ranking CSV",
+            tbl.to_csv().encode("utf-8"),
+            "ranking_soportes.csv",
+            "text/csv",
+            key="dl_rank_sop",
+        )
+else:
+    st.info("Sin datos de Soporte disponibles.")
 
 
 # ── TABLA DETALLE COMPLETO ────────────────────────────────────────────────────
